@@ -254,6 +254,10 @@ if __name__=='__main__':
     model = ghostnet()
     model.eval()
     print(model)
-    input = torch.randn(32,3,320,256)
-    y = model(input)
-    print(y.size())
+    input = torch.randn(1,3,320,256)
+    # y = model(input)
+    # print(y.size())
+    from torch.utils.tensorboard import SummaryWriter
+    writer = SummaryWriter()
+    writer.add_graph(model, input)
+    writer.close()
