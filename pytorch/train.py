@@ -42,6 +42,11 @@ parser.add_argument('--num-gpu', type=int, default=0,
                     help='Number of GPUS to use')
 parser.add_argument('--epochs', type=int, default=10,
                     help='Number of epoch to train')
+parser.add_argument('--momentum', type=float, default=0.9)
+parser.add_argument('--weight-decay', type=float, default=1e-4,
+                    help='weight decay (default: 1e-4)')
+parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+                    metavar='LR', help='initial learning rate')
 
 
 def main():
@@ -59,8 +64,9 @@ def main():
     print('GhostNet created.')
     
     valdir = os.path.join(args.data, 'val')
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                          std=[0.229, 0.224, 0.225])
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225])
     loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(valdir, transforms.Compose([
             transforms.Resize(256),
@@ -157,13 +163,12 @@ def accuracy(output, target, topk=(1,)):
     return [correct[:k].view(-1).float().sum(0) * 100. / batch_size for k in topk]
 
 
-def train_cifar():
+def train_ghostNet():
     "train ghostNet on cifar-10"
     args = parser.parse_args()
     model = ghostnet(
         num_classes=10,
-        width=args.width,
-        dropout=args.dropout)
+        width=args.width)
     normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225])
@@ -176,7 +181,11 @@ def train_cifar():
             normalize
         ]))
     model.train()
-    optimizer = torch.optim.Adam(model.parameters(), 0.001)
+    # optimizer = torch.optim.Adam(model.parameters(), 0.001)
+    optimizer = torch.optim.SGD(
+        model.parameters(), args.lr,
+        momentum=args.momentum,
+        weight_decay=args.weight_decay)
     epochs = args.epochs
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
     log_dir = os.path.join("./runs", current_time)
@@ -202,6 +211,86 @@ def train_cifar():
             writer.add_scalar('loss', loss, step)
 
 
+def train_resnet():
+    "train resnet on cifar-10"
+    args = parser.parse_args()
+    from resnet import resnet56
+    model = resnet56()
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225])
+    train_dataset = datasets.CIFAR10(
+        root='../data', train=True, download=True,
+        transform=transforms.Compose([
+            # transforms.Resize(256),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(32),
+            transforms.ToTensor(),
+            normalize
+        ]))
+    val_dataset = datasets.CIFAR10(
+        root='../data', train=False, download=True,
+        transform=transforms.Compose([
+            # transforms.Resize(256),
+            # transforms.CenterCrop(32),
+            transforms.ToTensor(),
+            normalize
+        ]))
+    # optimizer = torch.optim.Adam(model.parameters(), 0.001)
+    optimizer = torch.optim.SGD(
+        model.parameters(), args.lr,
+        momentum=args.momentum,
+        weight_decay=args.weight_decay)
+    lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer,
+        milestones=[100, 150])
+    epochs = args.epochs
+    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+    log_dir = os.path.join("./runs", current_time)
+    writer = SummaryWriter(log_dir)
+    loss_fn = nn.CrossEntropyLoss()
+    for epoch in range(epochs):
+        print("epoch: ", epoch)
+        model.train()
+        train_loader = torch.utils.data.DataLoader(
+            dataset=train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.workers,
+            pin_memory=True
+            )
+        for step, batch in enumerate(tqdm(train_loader)):
+            inputs = batch[0]
+            target = batch[1]
+            output = model(inputs)
+            loss = loss_fn(output, target)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            # print("epoch: {}| loss：{}".format(epoch, loss.data))
+            writer.add_scalar('loss', loss, step)
+        lr_scheduler.step()
+        # evaluation
+        model.eval()
+        with torch.no_grad():
+            val_loader = torch.utils.data.DataLoader(
+                dataset=val_dataset,
+                batch_size=args.batch_size,
+                shuffle=True,
+                num_workers=args.workers,
+                pin_memory=True
+                )
+            prec1 = 0
+            num = len(val_loader)
+            for step, batch in enumerate(tqdm(val_loader)):
+                inputs = batch[0]
+                target = batch[1]
+                output = model(inputs)
+                prec1 += accuracy(output.data, target)[0]
+            print("epoch: {}| loss：{}".format(epoch, prec1/num))
+            writer.add_scalar('avg accuracy', prec1/num, epoch)
+
+
 if __name__ == '__main__':
     # main()
-    train_cifar()
+    train_resnet()
