@@ -95,7 +95,7 @@ class GhostModule(nn.Module):
     def forward(self, x):
         x1 = self.primary_conv(x)
         x2 = self.cheap_operation(x1)
-        out = torch.cat([x1,x2], dim=1)
+        out = torch.cat([x1, x2], dim=1)
         return out[:,:self.oup,:,:]
 
 
