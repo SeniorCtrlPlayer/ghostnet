@@ -1,1 +1,1 @@
-python train.py --batch_size 256 --num-gpu 1
+python train.py --batch_size 256 --num_gpu 1

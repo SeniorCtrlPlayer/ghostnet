@@ -7,9 +7,9 @@ An example inference script that outputs top-k class ids for images in a folder 
 Hacked together by Ross Wightman (https://github.com/rwightman)
 """
 import os
-import time
+# import time
 import argparse
-import logging
+# import logging
 # import numpy as np
 from collections import OrderedDict
 import torch
@@ -30,20 +30,20 @@ parser.add_argument('--output_dir', metavar='DIR', default='../models/',
                     help='path to output files')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 2)')
-parser.add_argument('-b', '--batch-size', default=32, type=int,
+parser.add_argument('-b', '--batch_size', default=32, type=int,
                     metavar='N', help='mini-batch size (default: 256)')
-parser.add_argument('--num-classes', type=int, default=1000,
+parser.add_argument('--num_classes', type=int, default=1000,
                     help='Number classes in dataset')
 parser.add_argument('--width', type=float, default=1.0, 
                     help='Width ratio (default: 1.0)')
 parser.add_argument('--dropout', type=float, default=0.2, metavar='PCT',
                     help='Dropout rate (default: 0.2)')
-parser.add_argument('--num-gpu', type=int, default=0,
+parser.add_argument('--num_gpu', type=int, default=0,
                     help='Number of GPUS to use')
-parser.add_argument('--epochs', type=int, default=10,
+parser.add_argument('--epochs', type=int, default=1,
                     help='Number of epoch to train')
 parser.add_argument('--momentum', type=float, default=0.9)
-parser.add_argument('--weight-decay', type=float, default=1e-4,
+parser.add_argument('--weight_decay', type=float, default=1e-4,
                     help='weight decay (default: 1e-4)')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate')
@@ -86,19 +86,19 @@ def main():
     print(eval_metrics)
 
 
-def validate(model, loader, loss_fn, args, log_suffix=''):
-    batch_time_m = AverageMeter()
+def validate(model, epoch, loader, loss_fn):
+    # batch_time_m = AverageMeter()
     losses_m = AverageMeter()
     top1_m = AverageMeter()
     top5_m = AverageMeter()
 
     model.eval()
 
-    end = time.time()
-    last_idx = len(loader) - 1
+    # end = time.time()
+    # last_idx = len(loader) - 1
     with torch.no_grad():
         for batch_idx, (input, target) in enumerate(loader):
-            last_batch = batch_idx == last_idx
+            # last_batch = batch_idx == last_idx
             # input = input.cuda()
             # target = target.cuda()
 
@@ -117,18 +117,24 @@ def validate(model, loader, loss_fn, args, log_suffix=''):
             top1_m.update(acc1.item(), output.size(0))
             top5_m.update(acc5.item(), output.size(0))
 
-            batch_time_m.update(time.time() - end)
-            end = time.time()
-            if (last_batch or batch_idx % 10 == 0):
-                log_name = 'Test' + log_suffix
-                logging.info(
-                    '{0}: [{1:>4d}/{2}]  '
-                    'Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  '
-                    'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
-                    'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
-                    'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
-                        log_name, batch_idx, last_idx, batch_time=batch_time_m,
-                        loss=losses_m, top1=top1_m, top5=top5_m))
+            # batch_time_m.update(time.time() - end)
+            # end = time.time()
+            # if (last_batch or batch_idx % 10 == 0):
+            #     log_name = 'Test' + log_suffix
+                # logging.info(
+            #         '{0}: [{1:>4d}/{2}]  '
+            #         'Time: {batch_time.val:.3f} ({batch_time.avg:.3f})  '
+            #         'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
+            #         'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
+            #         'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
+            #             log_name, batch_idx, last_idx, batch_time=batch_time_m,
+            #             loss=losses_m, top1=top1_m, top5=top5_m))
+        print('Epoch: {0}  '
+              'Loss: {loss.val:>7.4f} ({loss.avg:>6.4f})  '
+              'Acc@1: {top1.val:>7.4f} ({top1.avg:>7.4f})  '
+              'Acc@5: {top5.val:>7.4f} ({top5.avg:>7.4f})'.format(
+                  epoch, loss=losses_m, top1=top1_m, top5=top5_m))
+
 
     metrics = OrderedDict([('loss', losses_m.avg), ('top1', top1_m.avg), ('top5', top5_m.avg)])
 
@@ -161,6 +167,13 @@ def accuracy(output, target, topk=(1,)):
     pred = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
     return [correct[:k].view(-1).float().sum(0) * 100. / batch_size for k in topk]
+
+
+def save_checkpoint(state, is_best, filename='checkpoint.pth'):
+    """
+    Save the training model
+    """
+    torch.save(state, filename)
 
 
 def train_ghostNet():
@@ -213,14 +226,21 @@ def train_ghostNet():
 
 def train_resnet():
     "train resnet on cifar-10"
+    data_dir = "../"
     args = parser.parse_args()
+    device = torch.device("cpu")
+    if args.num_gpu == 1:
+        device = torch.device("cuda:6" if torch.cuda.is_available() else "cpu")
+    elif args.num_gpu > 1:
+        raise "no implemented"
     from resnet import resnet56
     model = resnet56()
+    model.to(device=device)
     normalize = transforms.Normalize(
         mean=[0.485, 0.456, 0.406],
         std=[0.229, 0.224, 0.225])
     train_dataset = datasets.CIFAR10(
-        root='../data', train=True, download=True,
+        root=data_dir+"data", train=True, download=True,
         transform=transforms.Compose([
             # transforms.Resize(256),
             transforms.RandomHorizontalFlip(),
@@ -229,7 +249,7 @@ def train_resnet():
             normalize
         ]))
     val_dataset = datasets.CIFAR10(
-        root='../data', train=False, download=True,
+        root=data_dir+"data", train=False, download=True,
         transform=transforms.Compose([
             # transforms.Resize(256),
             # transforms.CenterCrop(32),
@@ -243,12 +263,16 @@ def train_resnet():
         weight_decay=args.weight_decay)
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer,
-        milestones=[100, 150])
+        milestones=[32000, 48000],
+        gamma=0.1)
     epochs = args.epochs
     current_time = datetime.now().strftime('%b%d_%H-%M-%S')
     log_dir = os.path.join("./runs", current_time)
     writer = SummaryWriter(log_dir)
-    loss_fn = nn.CrossEntropyLoss()
+    if args.num_gpu >= 1:
+        loss_fn = nn.CrossEntropyLoss().cuda()
+    else:
+        loss_fn = nn.CrossEntropyLoss()
     for epoch in range(epochs):
         print("epoch: ", epoch)
         model.train()
@@ -259,36 +283,28 @@ def train_resnet():
             num_workers=args.workers,
             pin_memory=True
             )
-        for step, batch in enumerate(tqdm(train_loader)):
-            inputs = batch[0]
-            target = batch[1]
+        for step, (inputs, target) in enumerate(tqdm(train_loader)):
+            inputs = inputs.cuda(device=device)
+            target = target.cuda(device=device)
             output = model(inputs)
-            loss = loss_fn(output, target)
+
             optimizer.zero_grad()
+            loss = loss_fn(output, target)
             loss.backward()
             optimizer.step()
-            # print("epoch: {}| loss：{}".format(epoch, loss.data))
-            writer.add_scalar('loss', loss, step)
-        lr_scheduler.step()
+            lr_scheduler.step()
+            writer.add_scalar('loss', loss.item(), step)
         # evaluation
-        model.eval()
-        with torch.no_grad():
-            val_loader = torch.utils.data.DataLoader(
-                dataset=val_dataset,
-                batch_size=args.batch_size,
-                shuffle=True,
-                num_workers=args.workers,
-                pin_memory=True
-                )
-            prec1 = 0
-            num = len(val_loader)
-            for step, batch in enumerate(tqdm(val_loader)):
-                inputs = batch[0]
-                target = batch[1]
-                output = model(inputs)
-                prec1 += accuracy(output.data, target)[0]
-            print("epoch: {}| loss：{}".format(epoch, prec1/num))
-            writer.add_scalar('avg accuracy', prec1/num, epoch)
+        val_loader = torch.utils.data.DataLoader(
+            dataset=val_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.workers,
+            pin_memory=True
+            )
+        metrics = validate(model, epoch, val_loader, loss_fn)
+        for key in metrics:
+            writer.add_scalar(key, metrics[key], epoch)
 
 
 if __name__ == '__main__':
